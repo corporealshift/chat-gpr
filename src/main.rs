@@ -1,41 +1,71 @@
-use ratatui::{
-    backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
-    widgets::{Block, Borders, Widget},
-    Terminal,
-};
-use std::{io, thread, time::Duration};
+use eframe::egui;
+use egui::ScrollArea;
 
-use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
-    execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-};
+fn main() -> Result<(), eframe::Error> {
+    env_logger::init();
+    let options = eframe::NativeOptions {
+        initial_window_size: Some(egui::vec2(600.0, 400.0)),
+        ..Default::default()
+    };
 
-fn main() -> Result<(), io::Error> {
-    enable_raw_mode();
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    eframe::run_native(
+        "Chat GPR",
+        options,
+        Box::new(|_cc| Box::<ChatGPR>::default()),
+    )
+}
 
-    terminal.draw(|f| {
-        let size = f.size();
-        let block = Block::default().title("Chat GPR").borders(Borders::ALL);
-        f.render_widget(block, size);
-    })?;
+struct ChatGPR {
+    name: String,
+    messages: Vec<String>,
+    new_message: String,
+}
 
-    // ? why sleep ?
-    thread::sleep(Duration::from_millis(5000));
+impl Default for ChatGPR {
+    fn default() -> Self {
+        Self {
+            name: "Kyle".to_owned(),
+            messages: vec!["".to_owned()],
+            new_message: "".to_owned(),
+        }
+    }
+}
 
-    // restore terminal
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture,
-    )?;
-    terminal.show_cursor()?;
-
-    Ok(())
+impl eframe::App for ChatGPR {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("Chat GPR");
+            ui.horizontal(|ui| {
+                let name_label = ui.label("Your name: ");
+                ui.text_edit_singleline(&mut self.name)
+                    .labelled_by(name_label.id);
+            });
+            ScrollArea::vertical()
+                .auto_shrink([false; 2])
+                .max_height(ui.available_height() - 20.0)
+                .show(ui, |ui| {
+                    for message in self.messages.iter() {
+                        ui.label(message);
+                    }
+                });
+            ui.horizontal(|ui| {
+                let response = ui.add(
+                    egui::TextEdit::singleline(&mut self.new_message)
+                        .desired_width(ui.available_width() - 50.0),
+                );
+                if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    self.messages
+                        .push(format!("{} said: {}", self.name, self.new_message));
+                    self.new_message = "".to_owned();
+                    response.request_focus();
+                }
+                if ui.button("Send >").clicked() {
+                    self.messages
+                        .push(format!("{} said: {}", self.name, self.new_message));
+                    self.new_message = "".to_owned();
+                    response.request_focus();
+                }
+            });
+        });
+    }
 }
